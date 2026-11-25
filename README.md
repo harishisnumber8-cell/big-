@@ -56,3 +56,21 @@ CONTACT_EMAIL=you@example.com python -m storm live   # NWS asks for a contact in
 ```
 
 A replay closes all of that day's storms at the end of it, so a storm that runs past midnight UTC shows up as two events.
+
+## Phase 3: alerts
+
+| File | What it does |
+| --- | --- |
+| `storm/alerts.py` | Matches storms to each customer's ZIPs. Sends one heads-up SMS while a storm is active and one summary email + SMS when it closes |
+| `storm/notify.py` | Email over SMTP (works with Amazon SES or Postmark), SMS through Twilio. Prints instead of sending when no credentials are set |
+
+A customer gets alerts when hail at or above `min_hail_in` (default 1 in) or wind at or above `min_wind_mph` (default 60) hits at least `min_buildings` (default 10) buildings in their ZIPs, for storms that start after they signed up. Each alert is recorded before it is sent, so overlapping runs never send twice. A failed send is kept with its error and not retried.
+
+Add a customer (a signup page comes in phase 4):
+
+```sql
+INSERT INTO customer (name, email, phone, zips)
+VALUES ('Acme Roofing', 'owner@acme.example', '+15015551234', '{72201,72202,72205}');
+```
+
+To send for real, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `FROM_EMAIL`, `TWILIO_SID`, `TWILIO_TOKEN` and `TWILIO_FROM`. `python -m storm live` sends alerts after each run; `python -m storm alerts` sends any that are due.

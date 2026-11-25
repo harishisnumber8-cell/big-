@@ -101,3 +101,30 @@ CREATE INDEX IF NOT EXISTS hail_cell_new_idx ON hail_cell (valid_at) WHERE event
 CREATE INDEX IF NOT EXISTS storm_report_event_idx ON storm_report (event_id);
 CREATE INDEX IF NOT EXISTS storm_report_geom_idx ON storm_report USING gist (geom);
 CREATE INDEX IF NOT EXISTS structure_cell_idx ON structure (cell_x, cell_y);
+
+-- Phase 3: customers and the alerts sent to them.
+CREATE TABLE IF NOT EXISTS customer (
+  id bigserial PRIMARY KEY,
+  name text NOT NULL,
+  email text,
+  phone text,  -- E.164, e.g. +15015551234; no phone means no SMS
+  zips text[] NOT NULL,  -- service area; counties are expanded to their ZIPs at signup
+  min_hail_in real NOT NULL DEFAULT 1.0,
+  min_wind_mph real NOT NULL DEFAULT 60,
+  min_buildings int NOT NULL DEFAULT 10,  -- skip pop-up storms that hit only a handful of buildings
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()  -- storms before signup never alert
+);
+
+CREATE TABLE IF NOT EXISTS alert (
+  id bigserial PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customer,
+  event_id bigint NOT NULL REFERENCES storm_event,
+  kind text NOT NULL,     -- headsup (SMS while the storm is active) or summary (when it closes)
+  channel text NOT NULL,  -- email or sms
+  body text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',  -- pending, sent, failed
+  error text,
+  sent_at timestamptz,
+  UNIQUE (customer_id, event_id, kind, channel)  -- one of each per storm, even if two runs overlap
+);

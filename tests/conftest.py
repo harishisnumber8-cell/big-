@@ -6,7 +6,7 @@ import pytest
 
 DB = os.environ.get("DATABASE_URL")
 SQL = Path(__file__).resolve().parent.parent / "db"
-TABLES = "event_zip_impact, warning, storm_report, hail_cell, storm_event, county, zip_area, structure, grid_cell"
+TABLES = "alert, customer, event_zip_impact, warning, storm_report, hail_cell, storm_event, county, zip_area, structure, grid_cell"
 
 
 def box(x0, y0, x1, y1):

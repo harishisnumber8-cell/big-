@@ -1,6 +1,7 @@
 """Usage:
   python -m storm replay 2025-04-02 [--skip-reports]   load a past UTC day and build its storm events
-  python -m storm live                                 ingest the latest data and build events (run every 2-5 min)
+  python -m storm live                                 ingest the latest data, build events, send alerts (run every 2-5 min)
+  python -m storm alerts                               send any alerts that are due
 """
 import argparse
 import os
@@ -8,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg
 
-from storm import events, mrms, reports
+from storm import alerts, events, mrms, reports
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     rp.add_argument("date", help="UTC day, YYYY-MM-DD")
     rp.add_argument("--skip-reports", action="store_true", help="radar only, for networks that block IEM")
     sub.add_parser("live")
+    sub.add_parser("alerts")
     args = ap.parse_args()
 
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
@@ -33,6 +35,8 @@ def main():
             if not args.skip_reports:
                 reports.store_reports(conn, reports.parse_lsr(reports.fetch_lsr(start, end)))
             events.build(conn, end + events.CLOSE_AFTER + timedelta(hours=1))
+        elif args.cmd == "alerts":
+            print(alerts.run(conn), "alerts due")
         else:
             now = datetime.now(timezone.utc)
             key = mrms.list_keys(now.strftime("%Y%m%d"))[-1]  # shortcut: just after 00Z today's folder may be empty; fall back to yesterday if that bites
@@ -40,6 +44,7 @@ def main():
             reports.store_reports(conn, reports.parse_lsr(reports.fetch_lsr(now - timedelta(hours=2), now)))
             reports.store_alerts(conn, reports.parse_alerts(reports.fetch_alerts()))
             events.build(conn, now)
+            alerts.run(conn)
 
 
 if __name__ == "__main__":
