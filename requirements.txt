@@ -1,0 +1,4 @@
+psycopg[binary]>=3.1
+numpy>=1.26
+eccodes>=2.37
+requests>=2.31
