@@ -74,3 +74,18 @@ VALUES ('Acme Roofing', 'owner@acme.example', '+15015551234', '{72201,72202,7220
 ```
 
 To send for real, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `FROM_EMAIL`, `TWILIO_SID`, `TWILIO_TOKEN` and `TWILIO_FROM`. `python -m storm live` sends alerts after each run; `python -m storm alerts` sends any that are due.
+
+## Phase 4: web app and billing
+
+`storm/web.py` (run with `uvicorn storm.web:app`) serves:
+
+| Page | What it shows |
+| --- | --- |
+| `/signup` | Company, email, mobile, plan (Local $99 / 3 counties, Pro $199 / 15 counties, Statewide $399) and a county picker, then Stripe Checkout |
+| `/c/<token>` | The customer's storms from the last 12 months that met their thresholds |
+| `/c/<token>/events/<id>` | Hail swath map, per-ZIP table, CSV download |
+| `/stripe/webhook` | Turns alerts on when checkout completes and off when the subscription is cancelled |
+
+Each customer's dashboard is a private link (`token`), and every summary alert links to its storm page. Anyone holding the link can view it, so it carries no billing or contact details.
+
+Settings: `BASE_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and one Stripe price per plan: `STRIPE_PRICE_LOCAL`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_STATEWIDE`. In Stripe, point a webhook at `<BASE_URL>/stripe/webhook` for `checkout.session.completed` and `customer.subscription.deleted`. For local testing without Stripe, set `DEV_NO_BILLING=1`.

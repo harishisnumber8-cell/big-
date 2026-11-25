@@ -1,5 +1,7 @@
 """Match storms to customers' service areas and send each customer at most one heads-up SMS
 while a storm is active and one summary (email + SMS) when it closes."""
+import os
+
 from storm import notify
 
 # Active storms: hail at or above the customer's threshold over buildings in their ZIPs.
@@ -18,7 +20,7 @@ HAVING count(DISTINCT s.id) >= c.min_buildings
 
 # Closed storms: per-ZIP impacts in the customer's area that meet their hail or wind threshold.
 SUMMARIES = """
-SELECT c.id, e.id, c.email, c.phone, e.max_hail_in, e.confidence,
+SELECT c.id, e.id, c.email, c.phone, e.max_hail_in, e.confidence, c.token,
        json_agg(json_build_object('zip', i.zip, 'hail', i.max_hail_in, 'wind', i.max_wind_mph, 'b1', i.buildings_ge_1in,
                                   'b15', i.buildings_ge_1_5in, 'b2', i.buildings_ge_2in, 'reports', i.report_count)
                 ORDER BY i.buildings_ge_1in DESC, i.zip)
@@ -28,7 +30,7 @@ JOIN customer c ON i.zip = ANY (c.zips)
 WHERE e.closed AND c.active AND e.started_at >= c.created_at
   AND (i.max_hail_in >= c.min_hail_in OR i.max_wind_mph >= c.min_wind_mph)
   AND NOT EXISTS (SELECT 1 FROM alert a WHERE a.customer_id = c.id AND a.event_id = e.id AND a.kind = 'summary')
-GROUP BY c.id, e.id, c.email, c.phone, e.max_hail_in, e.confidence, c.min_buildings, c.min_wind_mph
+GROUP BY c.id, e.id, c.email, c.phone, e.max_hail_in, e.confidence, c.token, c.min_buildings, c.min_wind_mph
 HAVING sum(i.buildings_ge_1in) >= c.min_buildings OR max(i.max_wind_mph) >= c.min_wind_mph
 """
 
@@ -41,8 +43,9 @@ def run(conn, send=notify.send):
         shown = ", ".join(zips[:6]) + (f" and {len(zips) - 6} more" if len(zips) > 6 else "")
         out.append((cust, ev, "headsup", "sms", phone, None,
                     f"Storm alert: hail up to {hail:.2f} in now over {shown}, about {n:,} buildings. Summary to follow."))
-    for cust, ev, email, phone, hail, confidence, zips in conn.execute(SUMMARIES).fetchall():
-        subject, body, sms = summary(hail, confidence, zips)
+    for cust, ev, email, phone, hail, confidence, token, zips in conn.execute(SUMMARIES).fetchall():
+        link = f"{os.environ.get('BASE_URL', 'http://localhost:8000')}/c/{token}/events/{ev}"
+        subject, body, sms = summary(hail, confidence, zips, link)
         if email:
             out.append((cust, ev, "summary", "email", email, subject, body))
         if phone:
@@ -62,7 +65,7 @@ def run(conn, send=notify.send):
     return len(out)
 
 
-def summary(hail, confidence, zips):
+def summary(hail, confidence, zips, link):
     hit = sum(z["b1"] for z in zips)
     wind = max((z["wind"] or 0) for z in zips)
     headline = f"hail up to {hail:.2f} in" + (f", wind to {wind:.0f} mph" if wind else "")
@@ -74,8 +77,8 @@ def summary(hail, confidence, zips):
         hail_s = f"{z['hail']:.2f} in" if z["hail"] else "-"
         wind_s = f"{z['wind']:.0f} mph" if z["wind"] else "-"
         lines.append(f"{z['zip']:<6} {hail_s:<9} {wind_s:<8} {z['b1']:>11,}  {z['b15']:>7,}  {z['b2']:>5,}  {z['reports']:>7}")
-    lines += ["", "Building counts are structures in the hail path, not confirmed damage.",
+    lines += ["", f"Map and CSV: {link}", "", "Building counts are structures in the hail path, not confirmed damage.",
               "Hail sizes are radar estimates (NOAA MRMS) unless backed by ground reports."]
     top = ", ".join(z["zip"] for z in zips[:5])
-    sms = f"Storm summary: {headline}. {hit:,} buildings hit in your ZIPs, most in {top}. Details in your email."
+    sms = f"Storm summary: {headline}. {hit:,} buildings hit in your ZIPs, most in {top}. Map: {link}"
     return subject, "\n".join(lines), sms

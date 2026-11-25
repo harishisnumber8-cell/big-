@@ -43,7 +43,7 @@ def test_headsup_then_summary_once(storm):
     sent = run(storm)
     assert sorted(c for c, _, _ in sent) == ["email", "sms"]
     email = next(b for c, _, b in sent if c == "email")
-    assert "72201" in email and "30" in email
+    assert "72201" in email and "30" in email and "/c/" in email
     assert run(storm) == []
     assert storm.execute("SELECT count(*) FROM alert WHERE status = 'sent'").fetchone()[0] == 3
 

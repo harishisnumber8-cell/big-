@@ -128,3 +128,9 @@ CREATE TABLE IF NOT EXISTS alert (
   sent_at timestamptz,
   UNIQUE (customer_id, event_id, kind, channel)  -- one of each per storm, even if two runs overlap
 );
+
+-- Phase 4: dashboard access and billing.
+ALTER TABLE customer ADD COLUMN IF NOT EXISTS token text NOT NULL UNIQUE DEFAULT gen_random_uuid()::text;  -- private dashboard link
+ALTER TABLE customer ADD COLUMN IF NOT EXISTS plan text;
+ALTER TABLE customer ADD COLUMN IF NOT EXISTS stripe_customer_id text;
+ALTER TABLE customer ADD COLUMN IF NOT EXISTS stripe_subscription_id text UNIQUE;
